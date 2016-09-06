@@ -33,7 +33,7 @@ int main (int argc, char * argv[])
 
 	/******************
 	  Here we populate a sockaddr_in struct with
-	  information regarding where we'd like to send our packet 
+	  information regarding where we'd like to send our packet
 	  i.e the Server.
 	 ******************/
 	bzero(&remote,sizeof(remote));               //zero the struct
@@ -42,28 +42,35 @@ int main (int argc, char * argv[])
 	remote.sin_addr.s_addr = inet_addr(argv[1]); //sets remote IP address
 
 	//Causes the system to create a generic socket of type UDP (datagram)
-	if ((sock = **** CALL SOCKET() HERE TO CREATE A UDP SOCKET ****) < 0)
+	if ((sock = socket(PF_INET, SOCK_DGRAM, 0)) < 0)
 	{
 		printf("unable to create socket");
 	}
 
+
 	/******************
-	  sendto() sends immediately.  
+	  sendto() sends immediately.
 	  it will report an error if the message fails to leave the computer
 	  however, with UDP, there is no error if the message is lost in the network once it leaves the computer.
 	 ******************/
-	char command[] = "apple";	
-	nbytes = **** CALL SENDTO() HERE ****;
+	char command[] = "apple";
+	/*
+	int sendto(int sockfd, const void *msg, int len, unsigned int flags,
+           const struct sockaddr *to, socklen_t tolen);
+	*/
+	nbytes = sendto(sock, &command, sizeof(command), 0,
+			(struct sockaddr *)&remote, sizeof(remote));
 
 	// Blocks till bytes are received
 	struct sockaddr_in from_addr;
-	int addr_length = sizeof(struct sockaddr);
+	socklen_t addr_length = sizeof(struct sockaddr);
 	bzero(buffer,sizeof(buffer));
-	nbytes = **** CALL RECVFROM() HERE ****;  
+	nbytes = recvfrom(sock, &buffer, sizeof(buffer), 0,
+			(struct sockaddr *)&from_addr, &addr_length);
 
 	printf("Server says %s\n", buffer);
 
 	close(sock);
+	return 0;
 
 }
-
