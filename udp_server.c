@@ -72,6 +72,8 @@ int main (int argc, char * argv[] )
 
 	//waits for an incoming message
 	bzero(buffer,sizeof(buffer));
+	printf("Listening on port %s...\n", argv[1]);
+
 	/*
 	int recvfrom(int sockfd, void *buf, int len, unsigned int flags,
 		 struct sockaddr *from, int *fromlen);
