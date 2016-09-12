@@ -16,6 +16,19 @@
 
 #define MAXBUFSIZE 100
 
+//SEQ:FLAG;data
+
+void get_ls(char *msg){
+	FILE *ls = popen("ls", "r");
+	char buf[256];
+	while (fgets(buf, sizeof(buf), ls) != 0) {
+    	printf("%s", buf);
+		strcat(msg,buf);
+		strcat(msg," ");
+	}
+	pclose(ls);
+}
+
 int main (int argc, char * argv[] )
 {
 
@@ -74,22 +87,31 @@ int main (int argc, char * argv[] )
 	bzero(buffer,sizeof(buffer));
 	printf("Listening on port %s...\n", argv[1]);
 
-	/*
-	int recvfrom(int sockfd, void *buf, int len, unsigned int flags,
-		 struct sockaddr *from, int *fromlen);
-	*/
-	nbytes = recvfrom(sock, &buffer, MAXBUFSIZE, 0,
-	 	(struct sockaddr *)&remote, &remote_length);
+	//infinite loop - terminated by ctrl+C by the server admin
+	for(;;){
+		/*
+		int recvfrom(int sockfd, void *buf, int len, unsigned int flags,
+			 struct sockaddr *from, int *fromlen);
+		*/
+		nbytes = recvfrom(sock, &buffer, MAXBUFSIZE, 0,
+		 	(struct sockaddr *)&remote, &remote_length);
 
-	printf("The client says %s\n", buffer);
+		printf("The client says %s\n", buffer);
+		char msg[MAXBUFSIZE] = "";
+		if(strcmp(buffer, "ls") == 0){
+			get_ls(msg);
+			nbytes = sendto(sock, &msg, sizeof(msg), 0,
+				(struct sockaddr *)&remote, remote_length);
+		}
 
-	char msg[] = "orange";
-	/*
-	int sendto(int sockfd, const void *msg, int len, unsigned int flags,
-           const struct sockaddr *to, socklen_t tolen);
-	*/
-	nbytes = sendto(sock, &msg, sizeof(msg), 0,
-		(struct sockaddr *)&remote, remote_length);
+		//msg = "orange";
+		/*
+		int sendto(int sockfd, const void *msg, int len, unsigned int flags,
+	           const struct sockaddr *to, socklen_t tolen);
+		*/
+		//nbytes = sendto(sock, &msg, sizeof(msg), 0,
+		//	(struct sockaddr *)&remote, remote_length);
+	}
 
 	close(sock);
 	return 0;

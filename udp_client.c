@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <memory.h>
 #include <errno.h>
+#include <stdio.h>
 
 #define MAXBUFSIZE 100
 
@@ -47,28 +48,37 @@ int main (int argc, char * argv[])
 		printf("unable to create socket");
 	}
 
+	printf("Connected to %s:%s...\n",argv[1],argv[2]);
 
-	/******************
-	  sendto() sends immediately.
-	  it will report an error if the message fails to leave the computer
-	  however, with UDP, there is no error if the message is lost in the network once it leaves the computer.
-	 ******************/
-	char command[] = "apple";
-	/*
-	int sendto(int sockfd, const void *msg, int len, unsigned int flags,
-           const struct sockaddr *to, socklen_t tolen);
-	*/
-	nbytes = sendto(sock, &command, sizeof(command), 0,
-			(struct sockaddr *)&remote, sizeof(remote));
+	char command[100];
 
-	// Blocks till bytes are received
-	struct sockaddr_in from_addr;
-	socklen_t addr_length = sizeof(struct sockaddr);
-	bzero(buffer,sizeof(buffer));
-	nbytes = recvfrom(sock, &buffer, sizeof(buffer), 0,
-			(struct sockaddr *)&from_addr, &addr_length);
+	while(strcmp(command, "exit") != 0){
 
-	printf("Server says %s\n", buffer);
+		/******************
+		  sendto() sends immediately.
+		  it will report an error if the message fails to leave the computer
+		  however, with UDP, there is no error if the message is lost in the network once it leaves the computer.
+		 ******************/
+		//char command[] = "apple";
+		/*
+		int sendto(int sockfd, const void *msg, int len, unsigned int flags,
+	           const struct sockaddr *to, socklen_t tolen);
+		*/
+		printf("> ");
+		scanf("%s",command);
+
+		nbytes = sendto(sock, &command, sizeof(command), 0,
+				(struct sockaddr *)&remote, sizeof(remote));
+
+		// Blocks till bytes are received
+		struct sockaddr_in from_addr;
+		socklen_t addr_length = sizeof(struct sockaddr);
+		bzero(buffer,sizeof(buffer));
+		nbytes = recvfrom(sock, &buffer, sizeof(buffer), 0,
+				(struct sockaddr *)&from_addr, &addr_length);
+
+		printf("%s\n", buffer);
+	}
 
 	close(sock);
 	return 0;
