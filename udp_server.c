@@ -12,32 +12,73 @@
 #include <stdlib.h>
 #include <memory.h>
 #include <string.h>
+#include <ctype.h>
+#include <stdbool.h>
 /* You will have to modify the program below */
 
 #define MAXBUFSIZE 100
 
-//SEQ:FLAG;data
+void strToLower(char *str){
+	//convert to lowercase
+	int i=0;
+	while(str[i] != '\n' && str[i] != EOF && i < MAXBUFSIZE){
+		str[i] = tolower(str[i]);
+		i++;
+	}
+}
 
+//gets a string rep of ls and returns via *msg
 void get_ls(char *msg){
 	FILE *ls = popen("ls", "r");
 	char buf[256];
 	while (fgets(buf, sizeof(buf), ls) != 0) {
-    	printf("%s", buf);
-		strcat(msg,buf);
-		strcat(msg," ");
+		strcat(msg,strtok(buf, "\n"));
+		strcat(msg,"    ");
 	}
 	pclose(ls);
 }
 
+
+// bool does_file_exist(char *msg){
+// 	FILE *ls = popen("ls", "r");
+// 	char buf[256];
+// 	bool exists = false;
+// 	while (fgets(buf, sizeof(buf), ls) != 0) {
+// 		strcat(msg,strtok(buf, "\n"));
+// 		strcat(msg,"    ");
+// 		if(strcmp(strtok(buf, "\n")))
+// 	}
+// 	pclose(ls);
+// }
+
+//extracts file name from cmd and returns via fn
+//cmd has the format eg 'get filename' or 'put filename'
+void get_file_name(char *cmd ,char *fn){
+	int start = sizeof(cmd);
+	bool end = false;
+	for(int i=0;i<sizeof(cmd);i++){
+		if(cmd[i] == ' '){
+			if(strlen(fn) == 0){
+				start = i+1;
+			}else{
+				end = true;
+			}
+		}
+		if(i >= start && !end){
+			fn = append(fn, cmd[i]);
+		}
+	}
+}
+
+
 int main (int argc, char * argv[] )
 {
-
-
 	int sock;                           	//This will be our socket
 	struct sockaddr_in sin, remote;     	//"Internet socket address structure"
-	socklen_t remote_length;         	//length of the sockaddr_in structure
+	socklen_t remote_length;         		//length of the sockaddr_in structure
 	int nbytes;                        		//number of bytes we receive in our message
-	char buffer[MAXBUFSIZE];            	//a buffer to store our received message
+	char incoming[MAXBUFSIZE];            	//a buffer to store our received message
+	char outgoing[MAXBUFSIZE];				//a buffer to store outgoing message
 	if (argc != 2)
 	{
 		printf ("USAGE:  <port>\n");
@@ -84,25 +125,44 @@ int main (int argc, char * argv[] )
 	remote_length = sizeof(remote);
 
 	//waits for an incoming message
-	bzero(buffer,sizeof(buffer));
+	bzero(incoming,sizeof(incoming));
 	printf("Listening on port %s...\n", argv[1]);
 
 	//infinite loop - terminated by ctrl+C by the server admin
 	for(;;){
+		memset(outgoing,0,MAXBUFSIZE);				//clear outgoing message from last time
 		/*
 		int recvfrom(int sockfd, void *buf, int len, unsigned int flags,
 			 struct sockaddr *from, int *fromlen);
 		*/
-		nbytes = recvfrom(sock, &buffer, MAXBUFSIZE, 0,
+		nbytes = recvfrom(sock, &incoming, MAXBUFSIZE, 0,
 		 	(struct sockaddr *)&remote, &remote_length);
 
-		printf("The client says %s\n", buffer);
-		char msg[MAXBUFSIZE] = "";
-		if(strcmp(buffer, "ls") == 0){
-			get_ls(msg);
-			nbytes = sendto(sock, &msg, sizeof(msg), 0,
-				(struct sockaddr *)&remote, remote_length);
+		printf("The client says %s\n\n", incoming);
+
+		char cmd[MAXBUFSIZE];
+
+		strncpy(cmd, incoming, 3);
+		cmd[3] = '\0';
+		printf("%s -> ",cmd);
+		strToLower(cmd);
+		printf("%s\n",cmd);
+
+		if(strcmp(incoming, "ls") == 0){
+			get_ls(outgoing);
+		}else if(strcmp(cmd,"get") == 0){
+			printf("GET command\n");
+			strcat(outgoing,"GET COMMAND");
+		}else if(strcmp(cmd,"put") == 0){
+			printf("PUT command\n");
+			strcat(outgoing,"PUT COMMAND");
+		}else{
+			strcat(outgoing,"Unknown command");
 		}
+
+		nbytes = sendto(sock, &outgoing, sizeof(outgoing), 0,
+			(struct sockaddr *)&remote, remote_length);
+
 
 		//msg = "orange";
 		/*

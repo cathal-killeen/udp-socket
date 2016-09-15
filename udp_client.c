@@ -21,8 +21,9 @@ int main (int argc, char * argv[])
 {
 
 	int nbytes;                             // number of bytes send by sendto()
-	int sock;                               //this will be our socket
-	char buffer[MAXBUFSIZE];
+	int sock;                               // this will be our socket
+	char incoming[MAXBUFSIZE];				// incoming buffer
+	char outgoing[MAXBUFSIZE];				// outgoing buffer
 
 	struct sockaddr_in remote;              //"Internet socket address structure"
 
@@ -50,34 +51,39 @@ int main (int argc, char * argv[])
 
 	printf("Connected to %s:%s...\n",argv[1],argv[2]);
 
-	char command[100];
-
-	while(strcmp(command, "exit") != 0){
-
+	while(strcmp(outgoing, "exit") != 0){
+		memset(outgoing,0,MAXBUFSIZE);
 		/******************
 		  sendto() sends immediately.
 		  it will report an error if the message fails to leave the computer
 		  however, with UDP, there is no error if the message is lost in the network once it leaves the computer.
 		 ******************/
-		//char command[] = "apple";
+		//char outgoing[] = "apple";
 		/*
 		int sendto(int sockfd, const void *msg, int len, unsigned int flags,
 	           const struct sockaddr *to, socklen_t tolen);
 		*/
 		printf("> ");
-		scanf("%s",command);
+		int i = 0;
+		char c = getchar();
+		while (c != '\n' && c != EOF && i != MAXBUFSIZE){
+			outgoing[i++] = c;
+        	c = getchar();
+    	}
 
-		nbytes = sendto(sock, &command, sizeof(command), 0,
+		printf("%s\n",outgoing);
+
+		nbytes = sendto(sock, &outgoing, sizeof(outgoing), 0,
 				(struct sockaddr *)&remote, sizeof(remote));
 
 		// Blocks till bytes are received
 		struct sockaddr_in from_addr;
 		socklen_t addr_length = sizeof(struct sockaddr);
-		bzero(buffer,sizeof(buffer));
-		nbytes = recvfrom(sock, &buffer, sizeof(buffer), 0,
+		bzero(incoming,sizeof(incoming));
+		nbytes = recvfrom(sock, &incoming, sizeof(incoming), 0,
 				(struct sockaddr *)&from_addr, &addr_length);
 
-		printf("%s\n", buffer);
+		printf("%s\n", incoming);
 	}
 
 	close(sock);
