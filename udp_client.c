@@ -17,6 +17,33 @@
 
 /* You will have to modify the program below */
 
+int fileSize(char *msg){
+	char str_size[MAXBUFSIZE];
+	int i=5; // we can ignore first 5 characters
+	while(msg[i] != '\n' && msg[i] != EOF && i < MAXBUFSIZE && msg[i] != ';'){
+		str_size[i-5]=msg[i];
+		i++;
+	}
+	return atoi(str_size);
+}
+
+char *getFileName(char *msg){
+	char *fn = malloc(MAXBUFSIZE);
+	int i=5; // we can ignore first 5
+	int j=0;
+	int semi = 0;
+	while(msg[i] != '\n' && msg[i] != EOF && i < MAXBUFSIZE && msg[i] != ' '){
+		if(semi == 1){
+			fn[j++]=msg[i];
+		}
+		if(msg[i] == ';'){
+			semi = 1;
+		}
+		i++;
+	}
+	return fn;
+}
+
 int main (int argc, char * argv[])
 {
 
@@ -83,7 +110,32 @@ int main (int argc, char * argv[])
 		nbytes = recvfrom(sock, &incoming, sizeof(incoming), 0,
 				(struct sockaddr *)&from_addr, &addr_length);
 
-		printf("%s\n", incoming);
+		char cmd[MAXBUFSIZE];						//stores command GET or PUT
+		strncpy(cmd, incoming, 5);
+		cmd[5] = '\0';
+
+		if(strcmp(cmd,";RTS;")==0){
+			int numPackets = fileSize(incoming);
+			printf("num packets = %d\n",numPackets);
+			char *fn = getFileName(incoming);
+			char *nfn = fn;
+			strcat(nfn,".received");
+			FILE *fp = fopen(nfn,"w");
+			memset(outgoing,0,MAXBUFSIZE);
+			strcat(outgoing,";CTS;");
+			nbytes = sendto(sock, &outgoing, sizeof(outgoing), 0,(struct sockaddr *)&remote, sizeof(remote));
+			while(numPackets > 0){
+				nbytes = recvfrom(sock, &incoming, sizeof(incoming), 0,(struct sockaddr *)&from_addr, &addr_length);
+				fputs(incoming, fp);
+				numPackets--;
+			}
+			fclose(fp);
+			printf("%s successfully recieved\n", fn);
+
+		}else{
+			printf("%s\n", incoming);
+		}
+
 	}
 
 	close(sock);
