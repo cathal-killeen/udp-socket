@@ -114,7 +114,17 @@ int main (int argc, char * argv[])
 		strncpy(cmd, incoming, 5);
 		cmd[5] = '\0';
 
-		if(strcmp(cmd,";RTS;")==0){
+		if(strcmp(cmd,";RLS;")==0){
+			long long int size = fileSize(incoming);
+			bzero(outgoing,MAXBUFSIZE);
+			strcat(outgoing,";CTS;");
+			sendto(sock, &outgoing, sizeof(outgoing), 0,(struct sockaddr *)&remote, sizeof(remote));
+			while(size > 0){
+				size -= recvfrom(sock, &incoming, sizeof(incoming), 0,(struct sockaddr *)&from_addr, &addr_length);
+				printf("%s",incoming);
+			}
+			printf("\n");
+		}else if(strcmp(cmd,";RTS;")==0){
 			long long int size = fileSize(incoming);
 			printf("num bytes = %lli\n",size);
 			char *fn = getFileName(incoming);
