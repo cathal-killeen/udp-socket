@@ -38,9 +38,9 @@ void strToLower(char *str){
 }
 
 //extract first n characters from incoming message and check if client made a request (eg. GET PUT LS)
-void getCmd(sock_data *S, char *cmd, int n){
+void getCmd(char *str, char *cmd, int n){
 	bzero(cmd,MAXBUFSIZE);
-	strncpy(cmd, S->incoming, n);
+	strncpy(cmd,str, n);
 	cmd[n] = '\0';
 	strToLower(cmd);
 }
@@ -70,7 +70,7 @@ int sendHandshake(sock_data *S, char *type, long long int size, char *filename){
 	receive(S);
 
 	char cmd[5];
-	getCmd(S,cmd,5);
+	getCmd(S->incoming,cmd,5);
 
 	if(strcmp(cmd,";cts;") == 0){
 		return 0;
@@ -111,13 +111,40 @@ void sendLs(sock_data *S){
 	}
 }
 
+long long int fileSize(char *msg){
+	char str_size[MAXBUFSIZE];
+	int i=5; // we can ignore first 5 characters
+	while(msg[i] != '\n' && msg[i] != EOF && i < MAXBUFSIZE && msg[i] != ';'){
+		str_size[i-5]=msg[i];
+		i++;
+	}
+	return atoi(str_size);
+}
+
 //extracts file name from client text request
 //req has the format eg 'get filename' or 'put filename'
-char *parseFilename(char *req){
+char *parseFilenameFromReq(char *req){
 	char *fn = malloc(MAXBUFSIZE);
 	int i=4; // we can ignore first 4 characters since they will be 'get ' or 'put ' - note space
 	while(req[i] != '\n' && req[i] != EOF && i < MAXBUFSIZE && req[i] != ' '){
 		fn[i-4]=req[i];
+		i++;
+	}
+	return fn;
+}
+
+char *parseFilename(char *msg){
+	char *fn = malloc(MAXBUFSIZE);
+	int i=5; // we can ignore first 5
+	int j=0;
+	int semi = 0;
+	while(msg[i] != '\n' && msg[i] != EOF && i < MAXBUFSIZE && msg[i] != ' '){
+		if(semi == 1){
+			fn[j++]=msg[i];
+		}
+		if(msg[i] == ';'){
+			semi = 1;
+		}
 		i++;
 	}
 	return fn;
@@ -142,8 +169,9 @@ long long int numBytes(FILE *f){
 	return len;
 }
 
+//sends file after user makes a GET request
 void sendFile(sock_data *S){
-	char *fn = parseFilename(S->incoming);
+	char *fn = parseFilenameFromReq(S->incoming);
 	printf("**************\n");
 	printf("Req type: GET\nFilename: %s\n",fn);
 	if(fileExists(fn)){
@@ -168,6 +196,33 @@ void sendFile(sock_data *S){
 		strcat(S->outgoing,";ERR;DNE;");
 		strcat(S->outgoing,fn);
 		sendToClient(S);
+	}
+}
+
+void receiveFile(sock_data *S){
+	receive(S);
+	char cmd[MAXBUFSIZE];
+	getCmd(S->incoming,cmd,5);
+	if(strcmp(cmd,";rts;")==0){
+		char *fn = parseFilename(S->incoming);
+		long long int size = fileSize(S->incoming);
+		char *newFn = fn; strcat(newFn,".received");
+		FILE *fp = fopen(newFn,"wb");
+		strcat(S->outgoing,";CTS;");
+		sendToClient(S);
+		while(size > 0){
+			receive(S);
+			int writeSize = MAXBUFSIZE; 				//default bytes to write to new file
+			if(size < MAXBUFSIZE){writeSize = size;}    //write only the number of bits left if less than MAXBUFSIZE
+			int written = fwrite(&S->incoming, 1, writeSize, fp);
+			//printf("bytes written = %d\n",written);
+			size-=written;
+			//printf("bytes remaining: %lli\n",size);
+		}
+		fclose(fp);
+		printf("%s successfully recieved!\n", fn);
+	}else{
+		printf("Error on handshake\n");
 	}
 }
 
@@ -203,76 +258,49 @@ int main (int argc, char * argv[] ){
 		exit(1);
 	}
 
-	sock_data MySock;										//initialize MySock struct which stores all the relevant sock info
+	sock_data ServerSock;										//initialize ServerSock struct which stores all the relevant sock info
 	char *port = argv[1];
 
-	if(populateSockAddr(&MySock,port)>0){
+	if(populateSockAddr(&ServerSock,port)>0){
 		printf("Error: Unable to create socket");
 		exit(1);
 	}
 
-	if(bindSocket(&MySock,port)>0){
+	if(bindSocket(&ServerSock,port)>0){
 		printf("Error: Unable to bind the socket");
 	}
 
 	//infinite loop - terminated by ctrl+C by the server admin
 	for(;;){
 		char cmd[MAXBUFSIZE];								//stores command GET or PUT
-		bzero(MySock.outgoing,MAXBUFSIZE);					//clear outgoing message from last time
+		bzero(ServerSock.outgoing,MAXBUFSIZE);					//clear outgoing message from last time
 
 		//receives request from client
-		receive(&MySock);
-		printf("The client says %s\n", MySock.incoming);
-		getCmd(&MySock, cmd, 3);
+		receive(&ServerSock);
+		printf("The client says %s\n", ServerSock.incoming);
+		getCmd(ServerSock.incoming, cmd, 4);
 
 		//if client requests ls
 		if(strcmp(cmd, "ls") == 0){
-			sendLs(&MySock);
+			sendLs(&ServerSock);
 
 		//if client makes GET request
-		}else if(strcmp(cmd,"get") == 0){
-			sendFile(&MySock);
+		}else if(strcmp(cmd,"get ") == 0){
+			sendFile(&ServerSock);
+
+		//if client makes a PUT request
+		}else if(strcmp(cmd,"put ") == 0){
+			receiveFile(&ServerSock);
+		}else if(strcmp(cmd,"exit")==0){
+			printf("client left\n");
+		}else{
+			strcat(ServerSock.outgoing,"Unknown command: '");
+			strcat(ServerSock.outgoing,ServerSock.incoming);
+			strcat(ServerSock.outgoing,"'");
+			sendToClient(&ServerSock);
 		}
-		// 	char *fn = getFileName(incoming);
-		// 	printf("request type: GET\nfilename: %s\n",fn);
-		// 	if(fileExists(fn)){
-		// 		printf("%s exists\n",fn);
-		// 		FILE *fp = fopen(fn,"rb");
-		// 		long long int size = numBytes(fp); 	//get size of file
-		// 		printf("bytes = %lli\n",size);
-		// 		strcat(outgoing,";RTS;");
-		// 		char numbuf[MAXBUFSIZE];
-		// 		sprintf(numbuf, "%lli", size);
-		// 		strcat(outgoing,numbuf);strcat(outgoing,";");
-		// 		strcat(outgoing,fn);
-		// 		sendto(sock, &outgoing, sizeof(outgoing), 0,(struct sockaddr *)&remote, remote_length);
-		// 		recvfrom(sock, &incoming, sizeof(incoming), 0,(struct sockaddr *)&remote, &remote_length);
-		// 		if(strcmp(incoming,";CTS;") == 0){
-		// 			while(!feof(fp)){
-		// 				int readBytes = fread(&outgoing, 1, sizeof(outgoing), fp);
-		// 				printf("bytes read = %d\n",readBytes);
-		// 				sendto(sock, &outgoing, sizeof(outgoing), 0,(struct sockaddr *)&remote, remote_length);
-		// 				memset(outgoing,0,MAXBUFSIZE);
-		// 			}
-		// 		}
-		// 		fclose(fp);
-		// 		printf("file sent!\n");
-		// 	}else{
-		// 		printf("%s doesnt exist\n",fn);
-		// 		strcat(outgoing,";ERR;DNE;");
-		// 		strcat(outgoing,fn);
-		// 		sendto(sock, &outgoing, sizeof(outgoing), 0,(struct sockaddr *)&remote, remote_length);
-		// 	}
-		// }else if(strcmp(cmd,"put") == 0){
-		// 	strcat(outgoing,"PUT COMMAND");
-		// 	printf("GET filename = %s\n",getFileName(incoming));
-		// 	sendto(sock, &outgoing, sizeof(outgoing), 0,(struct sockaddr *)&remote, remote_length);
-		// }else{
-		// 	strcat(outgoing,"Unknown command");
-		// 	sendto(sock, &outgoing, sizeof(outgoing), 0,(struct sockaddr *)&remote, remote_length);
-		// }
 	}
 
-	close(MySock.sock);
+	close(ServerSock.sock);
 	return 0;
 }

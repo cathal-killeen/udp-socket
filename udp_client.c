@@ -13,6 +13,8 @@
 #include <errno.h>
 #include <stdio.h>
 #include <ctype.h>
+#include <stdbool.h>
+#include <unistd.h>
 
 #define MAXBUFSIZE 100
 
@@ -37,9 +39,9 @@ void strToLower(char *str){
 }
 
 //extract first n characters from incoming message and check if client made a request (eg. GET PUT LS)
-void getCmd(sock_data *S, char *cmd, int n){
+void getCmd(char *str, char *cmd, int n){
 	bzero(cmd,MAXBUFSIZE);
-	strncpy(cmd, S->incoming, n);
+	strncpy(cmd, str, n);
 	cmd[n] = '\0';
 	strToLower(cmd);
 }
@@ -55,6 +57,27 @@ int sendToServer(sock_data *S){
 	return nbytes;
 }
 
+int sendHandshake(sock_data *S, char *type, long long int size, char *filename){
+	strcat(S->outgoing,";");
+	strcat(S->outgoing,type);
+	strcat(S->outgoing,";");
+	char numbuf[MAXBUFSIZE];
+	sprintf(numbuf, "%lli", size);
+	strcat(S->outgoing,numbuf);
+	strcat(S->outgoing,";");
+	strcat(S->outgoing,filename);
+
+	sendToServer(S);
+	receive(S);
+
+	char cmd[5];
+	getCmd(S->incoming,cmd,5);
+
+	if(strcmp(cmd,";cts;") == 0){
+		return 0;
+	}
+	return -1;
+}
 
 long long int fileSize(char *msg){
 	char str_size[MAXBUFSIZE];
@@ -64,6 +87,18 @@ long long int fileSize(char *msg){
 		i++;
 	}
 	return atoi(str_size);
+}
+
+//extracts file name from client text request
+//req has the format eg 'get filename' or 'put filename'
+char *parseFilenameFromReq(char *req){
+	char *fn = malloc(MAXBUFSIZE);
+	int i=4; // we can ignore first 4 characters since they will be 'get ' or 'put ' - note space
+	while(req[i] != '\n' && req[i] != EOF && i < MAXBUFSIZE && req[i] != ' '){
+		fn[i-4]=req[i];
+		i++;
+	}
+	return fn;
 }
 
 char *parseFilename(char *msg){
@@ -83,6 +118,25 @@ char *parseFilename(char *msg){
 	return fn;
 }
 
+//checks to see if requested file exists
+bool fileExists(char *fn){
+	if(access( fn, F_OK ) != -1 ) {
+    	// file exists
+		return true;
+	} else {
+    	// file doesn't exist
+		return false;
+	}
+}
+
+//gets the number of bytes in a file
+long long int numBytes(FILE *f){
+	fseek(f, 0L, SEEK_END);
+	int len = ftell(f);
+	rewind(f);
+	return len;
+}
+
 void receiveLs(sock_data *S){
 	long long int size = fileSize(S->incoming);
 	strcat(S->outgoing,";CTS;");
@@ -95,9 +149,9 @@ void receiveLs(sock_data *S){
 }
 
 void receiveFile(sock_data *S){
+	char *fn = parseFilename(S->incoming);
 	long long int size = fileSize(S->incoming);
 	//printf("num bytes = %lli\n",size);
-	char *fn = parseFilename(S->incoming);
 	char *newFn = fn; strcat(newFn,".received");
 	FILE *fp = fopen(newFn,"wb");
 	strcat(S->outgoing,";CTS;");
@@ -113,6 +167,35 @@ void receiveFile(sock_data *S){
 	}
 	fclose(fp);
 	printf("%s successfully recieved!\n", fn);
+}
+
+//sends file after user makes a GET request
+void sendFile(sock_data *S){
+	char *fn = parseFilenameFromReq(S->outgoing);
+	printf("**************\n");
+	printf("Req type: PUT\nFilename: %s\n",fn);
+	if(fileExists(fn)){
+		sendToServer(S);					//send put req
+		printf("Exists: true\n");
+		FILE *fp = fopen(fn,"rb");
+		long long int size = numBytes(fp); 	//get size of file
+		printf("Bytes: %lli\n",size);
+		printf("**************\n");
+		if(sendHandshake(S,"RTS",size,fn) == 0){
+			while(!feof(fp)){
+				fread(&S->outgoing, 1, sizeof(S->outgoing), fp);
+				sendToServer(S);
+			}
+			printf("%s sent!\n\n",fn);
+		}else{
+			printf("Error on hs with client\n\n");
+		}
+		fclose(fp);
+	}else{
+		printf("Exists: false!\n");
+		printf("**************\n\n");
+		printf("Error: '%s' does not exist\n",fn);
+	}
 }
 
 //This code populates the sockaddr_in struct with the information about our socket
@@ -150,26 +233,6 @@ int main (int argc, char * argv[]){
 	}
 	char *addr = argv[1];
 	char *port = argv[2];
-	// int sock;                               // this will be our socket
-	// char incoming[MAXBUFSIZE];				// incoming buffer
-	// char outgoing[MAXBUFSIZE];				// outgoing buffer
-	//
-	// struct sockaddr_in remote;              //"Internet socket address structure"
-	/******************
-	  Here we populate a sockaddr_in struct with
-	  information regarding where we'd like to send our packet
-	  i.e the Server.
-	 ******************/
-	// bzero(&remote,sizeof(remote));               //zero the struct
-	// remote.sin_family = AF_INET;                 //address family
-	// remote.sin_port = htons(atoi(argv[2]));      //sets port to network byte order
-	// remote.sin_addr.s_addr = inet_addr(argv[1]); //sets remote IP address
-	//
-	// //Causes the system to create a generic socket of type UDP (datagram)
-	// if ((sock = socket(PF_INET, SOCK_DGRAM, 0)) < 0)
-	// {
-	// 	printf("unable to create socket");
-	// }
 
 	sock_data ClientSock;
 	if(populateSockAddr(&ClientSock,addr,port)>0){
@@ -181,100 +244,36 @@ int main (int argc, char * argv[]){
 	for(;;){
 		bzero(ClientSock.outgoing,MAXBUFSIZE);					//zero
 		bzero(ClientSock.incoming,MAXBUFSIZE);
+
 		getUserInput(&ClientSock);
-		sendToServer(&ClientSock);
-
-		receive(&ClientSock);
-		char cmd[MAXBUFSIZE];								//stores command GET or PUT
-		getCmd(&ClientSock,cmd,4);
-
-		//if server requests to send ls to client
-		if(strcmp(cmd,";rls")==0){
-			receiveLs(&ClientSock);
-		//if server requests to send file
-		}else if(strcmp(cmd,";rts")==0){
-			receiveFile(&ClientSock);
+		char cmd[MAXBUFSIZE];
+		getCmd(ClientSock.outgoing,cmd,4);
+		if(strcmp(cmd,"put ")==0){
+			sendFile(&ClientSock);
 		}else if(strcmp(cmd,"exit")==0){
+			sendToServer(&ClientSock);
 			close(ClientSock.sock);
 			return 0;
 		}else{
-			printf("%s\n",ClientSock.incoming);
+			sendToServer(&ClientSock);
+
+			receive(&ClientSock);
+			getCmd(ClientSock.incoming,cmd,4);
+
+			//if server requests to send ls to client
+			if(strcmp(cmd,";rls")==0){
+				receiveLs(&ClientSock);
+			//if server requests to send file
+			}else if(strcmp(cmd,";rts")==0){
+				receiveFile(&ClientSock);
+			}else if(strcmp(cmd,";err;")==0){
+				char *fn = parseFilename(ClientSock.incoming);
+				printf("Error: '%s' does not exist\n",fn);
+			}else{
+				printf("%s\n",ClientSock.incoming);
+			}
 		}
 	}
-
-	// while(strcmp(outgoing, "exit") != 0){
-	// 	memset(outgoing,0,MAXBUFSIZE);
-	// 	/******************
-	// 	  sendto() sends immediately.
-	// 	  it will report an error if the message fails to leave the computer
-	// 	  however, with UDP, there is no error if the message is lost in the network once it leaves the computer.
-	// 	 ******************/
-	// 	//char outgoing[] = "apple";
-	// 	/*
-	// 	int sendto(int sockfd, const void *msg, int len, unsigned int flags,
-	//            const struct sockaddr *to, socklen_t tolen);
-	// 	*/
-	// 	printf("> ");
-	// 	int i = 0;
-	// 	char c = getchar();
-	// 	while (c != '\n' && c != EOF && i != MAXBUFSIZE){
-	// 		outgoing[i++] = c;
-    //     	c = getchar();
-    // 	}
-	//
-	// 	printf("%s\n",outgoing);
-	//
-	// 	nbytes = sendto(sock, &outgoing, sizeof(outgoing), 0,
-	// 			(struct sockaddr *)&remote, sizeof(remote));
-	//
-	// 	// Blocks till bytes are received
-	// 	struct sockaddr_in from_addr;
-	// 	socklen_t addr_length = sizeof(struct sockaddr);
-	// 	bzero(incoming,sizeof(incoming));
-	// 	nbytes = recvfrom(sock, &incoming, sizeof(incoming), 0,
-	// 			(struct sockaddr *)&from_addr, &addr_length);
-	//
-	// 	char cmd[MAXBUFSIZE];						//stores command GET or PUT
-	// 	strncpy(cmd, incoming, 5);
-	// 	cmd[5] = '\0';
-	//
-	// 	if(strcmp(cmd,";RLS;")==0){
-	// 		long long int size = fileSize(incoming);
-	// 		bzero(outgoing,MAXBUFSIZE);
-	// 		strcat(outgoing,";CTS;");
-	// 		sendto(sock, &outgoing, sizeof(outgoing), 0,(struct sockaddr *)&remote, sizeof(remote));
-	// 		while(size > 0){
-	// 			size -= recvfrom(sock, &incoming, sizeof(incoming), 0,(struct sockaddr *)&from_addr, &addr_length);
-	// 			printf("%s",incoming);
-	// 		}
-	// 		printf("\n");
-	// 	}else if(strcmp(cmd,";RTS;")==0){
-	// 		long long int size = fileSize(incoming);
-	// 		printf("num bytes = %lli\n",size);
-	// 		char *fn = getFileName(incoming);
-	// 		char *nfn = fn;
-	// 		strcat(nfn,".received");
-	// 		FILE *fp = fopen(nfn,"wb");
-	// 		memset(outgoing,0,MAXBUFSIZE);
-	// 		strcat(outgoing,";CTS;");
-	// 		nbytes = sendto(sock, &outgoing, sizeof(outgoing), 0,(struct sockaddr *)&remote, sizeof(remote));
-	// 		while(size > 0){
-	// 			nbytes = recvfrom(sock, &incoming, sizeof(incoming), 0,(struct sockaddr *)&from_addr, &addr_length);
-	// 			int writeSize = MAXBUFSIZE; 				//default bytes to write to new file
-	// 			if(size < MAXBUFSIZE){writeSize = size;}    //write only the number of bits left if less than MAXBUFSIZE
-	// 			int written = fwrite(&incoming, 1, writeSize, fp);
-	// 			printf("bytes written = %d\n",written);
-	// 			size-=written;
-	// 			printf("bytes remaining: %lli\n",size);
-	// 		}
-	// 		fclose(fp);
-	// 		printf("%s successfully recieved\n", fn);
-	//
-	// 	}else{
-	// 		printf("%s\n", incoming);
-	// 	}
-	//
-	// }
 
 	close(ClientSock.sock);
 	return 0;
