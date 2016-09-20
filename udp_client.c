@@ -17,7 +17,7 @@
 
 /* You will have to modify the program below */
 
-int fileSize(char *msg){
+long long int fileSize(char *msg){
 	char str_size[MAXBUFSIZE];
 	int i=5; // we can ignore first 5 characters
 	while(msg[i] != '\n' && msg[i] != EOF && i < MAXBUFSIZE && msg[i] != ';'){
@@ -115,8 +115,8 @@ int main (int argc, char * argv[])
 		cmd[5] = '\0';
 
 		if(strcmp(cmd,";RTS;")==0){
-			int size = fileSize(incoming);
-			printf("num packets = %d\n",size);
+			long long int size = fileSize(incoming);
+			printf("num bytes = %lli\n",size);
 			char *fn = getFileName(incoming);
 			char *nfn = fn;
 			strcat(nfn,".received");
@@ -126,10 +126,12 @@ int main (int argc, char * argv[])
 			nbytes = sendto(sock, &outgoing, sizeof(outgoing), 0,(struct sockaddr *)&remote, sizeof(remote));
 			while(size > 0){
 				nbytes = recvfrom(sock, &incoming, sizeof(incoming), 0,(struct sockaddr *)&from_addr, &addr_length);
-				fwrite(&incoming, 1, MAXBUFSIZE, fp);
-				size--;
-				printf("packet = %s\n", incoming);
-				printf("packets remaining: %d\n",size);
+				int writeSize = MAXBUFSIZE; 				//default bytes to write to new file
+				if(size < MAXBUFSIZE){writeSize = size;}    //write only the number of bits left if less than MAXBUFSIZE
+				int written = fwrite(&incoming, 1, writeSize, fp);
+				printf("bytes written = %d\n",written);
+				size-=written;
+				printf("bytes remaining: %lli\n",size);
 			}
 			fclose(fp);
 			printf("%s successfully recieved\n", fn);

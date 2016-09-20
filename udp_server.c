@@ -159,20 +159,21 @@ int main (int argc, char * argv[] )
 			if(fileExists(fn)){
 				printf("%s exists\n",fn);
 				FILE *fp = fopen(fn,"rb");
-				//long long int size = numBytes(fp);
-				int packets = numPackets(fp);
+				long long int size = numBytes(fp);
+				//int packets = numPackets(fp);
 				//printf("LENGTH = %d",len);
-				printf("packets = %d\n",packets);
+				printf("bytes = %lli\n",size);
 				strcat(outgoing,";RTS;");
 				char numbuf[MAXBUFSIZE];
-				sprintf(numbuf, "%d", packets);
+				sprintf(numbuf, "%lli", size);
 				strcat(outgoing,numbuf);strcat(outgoing,";");
 				strcat(outgoing,fn);
 				nbytes = sendto(sock, &outgoing, sizeof(outgoing), 0,(struct sockaddr *)&remote, remote_length);
 				nbytes = recvfrom(sock, &incoming, MAXBUFSIZE, 0,(struct sockaddr *)&remote, &remote_length);
 				if(strcmp(incoming,";CTS;") == 0){
 					while(!feof(fp)){
-						fread(&outgoing, 1, MAXBUFSIZE, fp);
+						int readBytes = fread(&outgoing, 1, sizeof(outgoing), fp);
+						printf("bytes read = %d\n",readBytes);
 						nbytes = sendto(sock, &outgoing, sizeof(outgoing), 0,(struct sockaddr *)&remote, remote_length);
 						memset(outgoing,0,MAXBUFSIZE);
 					}
