@@ -62,7 +62,7 @@ bool fileExists(char *fn){
 	}
 }
 
-int fileSize(FILE *f){
+int numPackets(FILE *f){
 	int packets;
 	char buf[MAXBUFSIZE];
 	for(packets = 0; fgets(buf, MAXBUFSIZE, f) != NULL; ++packets);
@@ -70,6 +70,12 @@ int fileSize(FILE *f){
 	return packets;
 }
 
+long long int numBytes(FILE *f){
+	fseek(f, 0L, SEEK_END);
+	int len = ftell(f);
+	rewind(f);
+	return len;
+}
 
 int main (int argc, char * argv[] )
 {
@@ -128,16 +134,19 @@ int main (int argc, char * argv[] )
 	bzero(incoming,sizeof(incoming));
 	printf("Listening on port %s...\n", argv[1]);
 
+	char cmd[MAXBUFSIZE];						//stores command GET or PUT
+
 	//infinite loop - terminated by ctrl+C by the server admin
 	for(;;){
 		memset(outgoing,0,MAXBUFSIZE);				//clear outgoing message from last time
+		memset(cmd,0,MAXBUFSIZE);
 
 		nbytes = recvfrom(sock, &incoming, MAXBUFSIZE, 0,
 		 	(struct sockaddr *)&remote, &remote_length);
 
 		printf("The client says %s\n", incoming);
 
-		char cmd[MAXBUFSIZE];						//stores command GET or PUT
+
 		strncpy(cmd, incoming, 3);
 		cmd[3] = '\0';
 		strToLower(cmd);
@@ -149,22 +158,27 @@ int main (int argc, char * argv[] )
 			printf("GET filename = %s\n",fn);
 			if(fileExists(fn)){
 				printf("%s exists\n",fn);
-				FILE *fp = fopen(fn,"r");
-				int packets = fileSize(fp);
-				printf("packets = %d",packets);
+				FILE *fp = fopen(fn,"rb");
+				//long long int size = numBytes(fp);
+				int packets = numPackets(fp);
+				//printf("LENGTH = %d",len);
+				printf("packets = %d\n",packets);
 				strcat(outgoing,";RTS;");
 				char numbuf[MAXBUFSIZE];
 				sprintf(numbuf, "%d", packets);
-				strcat(outgoing,numbuf);strcat(outgoing,";");strcat(outgoing,fn);
+				strcat(outgoing,numbuf);strcat(outgoing,";");
+				strcat(outgoing,fn);
 				nbytes = sendto(sock, &outgoing, sizeof(outgoing), 0,(struct sockaddr *)&remote, remote_length);
 				nbytes = recvfrom(sock, &incoming, MAXBUFSIZE, 0,(struct sockaddr *)&remote, &remote_length);
 				if(strcmp(incoming,";CTS;") == 0){
-					while(fgets(outgoing, MAXBUFSIZE, fp) != NULL){
+					while(!feof(fp)){
+						fread(&outgoing, 1, MAXBUFSIZE, fp);
 						nbytes = sendto(sock, &outgoing, sizeof(outgoing), 0,(struct sockaddr *)&remote, remote_length);
 						memset(outgoing,0,MAXBUFSIZE);
 					}
 				}
 				fclose(fp);
+				printf("file sent!\n");
 			}else{
 				printf("%s doesnt exist\n",fn);
 			}

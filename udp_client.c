@@ -115,19 +115,21 @@ int main (int argc, char * argv[])
 		cmd[5] = '\0';
 
 		if(strcmp(cmd,";RTS;")==0){
-			int numPackets = fileSize(incoming);
-			printf("num packets = %d\n",numPackets);
+			int size = fileSize(incoming);
+			printf("num packets = %d\n",size);
 			char *fn = getFileName(incoming);
 			char *nfn = fn;
 			strcat(nfn,".received");
-			FILE *fp = fopen(nfn,"w");
+			FILE *fp = fopen(nfn,"wb");
 			memset(outgoing,0,MAXBUFSIZE);
 			strcat(outgoing,";CTS;");
 			nbytes = sendto(sock, &outgoing, sizeof(outgoing), 0,(struct sockaddr *)&remote, sizeof(remote));
-			while(numPackets > 0){
+			while(size > 0){
 				nbytes = recvfrom(sock, &incoming, sizeof(incoming), 0,(struct sockaddr *)&from_addr, &addr_length);
-				fputs(incoming, fp);
-				numPackets--;
+				fwrite(&incoming, 1, MAXBUFSIZE, fp);
+				size--;
+				printf("packet = %s\n", incoming);
+				printf("packets remaining: %d\n",size);
 			}
 			fclose(fp);
 			printf("%s successfully recieved\n", fn);
