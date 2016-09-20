@@ -113,7 +113,7 @@ void sendLs(sock_data *S){
 
 //extracts file name from client text request
 //req has the format eg 'get filename' or 'put filename'
-char *getFileName(char *req){
+char *parseFilename(char *req){
 	char *fn = malloc(MAXBUFSIZE);
 	int i=4; // we can ignore first 4 characters since they will be 'get ' or 'put ' - note space
 	while(req[i] != '\n' && req[i] != EOF && i < MAXBUFSIZE && req[i] != ' '){
@@ -140,6 +140,35 @@ long long int numBytes(FILE *f){
 	int len = ftell(f);
 	rewind(f);
 	return len;
+}
+
+void GETFile(sock_data *S){
+	char *fn = parseFilename(S->incoming);
+	printf("**************\n");
+	printf("Req type: GET\nFilename: %s\n",fn);
+	if(fileExists(fn)){
+		printf("Exists: true\n");
+		FILE *fp = fopen(fn,"rb");
+		long long int size = numBytes(fp); 	//get size of file
+		printf("Bytes: %lli\n",size);
+		printf("**************\n");
+		if(sendHandshake(S,"RTS",size,fn) == 0){
+			while(!feof(fp)){
+				fread(&S->outgoing, 1, sizeof(S->outgoing), fp);
+				sendToClient(S);
+			}
+			printf("%s sent!\n\n",fn);
+		}else{
+			printf("Error on hs with client\n\n");
+		}
+		fclose(fp);
+	}else{
+		printf("Exists: false!\n");
+		printf("**************\n\n");
+		strcat(S->outgoing,";ERR;DNE;");
+		strcat(S->outgoing,fn);
+		sendToClient(S);
+	}
 }
 
 //This code populates the sockaddr_in struct with the information about our socket
@@ -199,11 +228,11 @@ int main (int argc, char * argv[] ){
 		//if client requests ls
 		if(strcmp(cmd, "ls") == 0){
 			sendLs(&MySock);
-			//sendto(MySock.sock, &MySock.outgoing, sizeof(MySock.outgoing), 0, (struct sockaddr *)&MySock.remote, MySock.remote_length);
 
 		//if client makes GET request
+		}else if(strcmp(cmd,"get") == 0){
+			GETFile(&MySock);
 		}
-		//else if(strcmp(cmd,"get") == 0){
 		// 	char *fn = getFileName(incoming);
 		// 	printf("request type: GET\nfilename: %s\n",fn);
 		// 	if(fileExists(fn)){
