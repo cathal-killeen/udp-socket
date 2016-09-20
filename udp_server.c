@@ -142,7 +142,7 @@ long long int numBytes(FILE *f){
 	return len;
 }
 
-void GETFile(sock_data *S){
+void sendFile(sock_data *S){
 	char *fn = parseFilename(S->incoming);
 	printf("**************\n");
 	printf("Req type: GET\nFilename: %s\n",fn);
@@ -231,7 +231,7 @@ int main (int argc, char * argv[] ){
 
 		//if client makes GET request
 		}else if(strcmp(cmd,"get") == 0){
-			GETFile(&MySock);
+			sendFile(&MySock);
 		}
 		// 	char *fn = getFileName(incoming);
 		// 	printf("request type: GET\nfilename: %s\n",fn);
