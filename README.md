@@ -1,7 +1,6 @@
 ***************************************************
 CSCI 4273 Network Systems
 Programming Assignment 1:UDP Socket Programming
-Instructor: Sangtae Ha
 Student: Cathal Killeen
 Date: September 21 2016
 ***************************************************
